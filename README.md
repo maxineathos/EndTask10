@@ -41,11 +41,13 @@ No tray icons, no overlays, no popups, no background processes.
 
 Get the latest build from [Releases](https://github.com/maxineathos/EndTask10/releases).
 
-### 2. Run setup
+### 2. Run setup (as administrator)
 
 ```cmd
 setup.bat
 ```
+
+The script will auto-elevate via UAC — accept the prompt. This is needed to stop services that may otherwise restart killed apps.
 
 This will:
 - Copy the files to `%LOCALAPPDATA%\EndTask10\`
