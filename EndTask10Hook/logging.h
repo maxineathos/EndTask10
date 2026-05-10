@@ -1,7 +1,3 @@
-/*
- * EndTask10Hook - Logging Utilities
- */
-
 #pragma once
 #include <windows.h>
 

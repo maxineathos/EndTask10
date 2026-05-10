@@ -1,34 +1,31 @@
-# Build outputs
+# Build output
 build/
-cmake-build-*/
-out/
+*.obj
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.iobj
+*.ipdb
 
 # Visual Studio
 .vs/
-*.sln
-*.suo
 *.user
-*.userosscache
+*.suo
+*.sdf
 *.VC.db
-*.VC.VC.opendb
-*.vcxproj.user
+*.VC.opendb
+*.ipch
+*.sln.docstates
+*.ncb
 
-# Windows explorer thumbs
-Thumbs.db
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+*.cmake
 
-# Compiled binaries
-*.exe
-*.dll
-*.pdb
-*.lib
-*.exp
-*.obj
-*.ilk
-*.log
-
-# IDE files
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
+# EndTask10 local install
+LocalEndTask10/

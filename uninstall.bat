@@ -1,15 +1,20 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 title EndTask10 Uninstall
+
+set "APP_DIR=%LOCALAPPDATA%\EndTask10"
 
 echo =====================================
 echo   EndTask10 - Uninstall
 echo =====================================
 echo.
 
-set "APP_DIR=%LOCALAPPDATA%\EndTask10"
+:: Unload DLL
+if exist "%APP_DIR%\EndTask10Launcher.exe" (
+    "%APP_DIR%\EndTask10Launcher.exe" /unload
+)
 
-:: Remove from startup
+:: Remove startup entry
 reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" /v "EndTask10" /f >nul 2>&1
 echo [OK] Removed from startup
 
@@ -19,17 +24,7 @@ if exist "%APP_DIR%" (
     echo [OK] Removed %APP_DIR%
 )
 
-:: Restart explorer to unload injected DLL
 echo.
-set /p "RESTART=Restart explorer.exe to unload the DLL? (Y/N): "
-if /i "!RESTART!"=="Y" (
-    taskkill /f /im explorer.exe >nul 2>&1
-    echo [OK] Explorer restarted - DLL unloaded
-)
-
-echo.
-echo =====================================
-echo   Uninstall complete.
-echo =====================================
+echo Uninstall complete.
 echo.
 pause

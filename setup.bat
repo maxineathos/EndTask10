@@ -3,61 +3,59 @@ setlocal enabledelayedexpansion
 title EndTask10 Setup
 
 set "APP_DIR=%LOCALAPPDATA%\EndTask10"
-set "EXE_NAME=EndTask10Launcher.exe"
-set "DLL_NAME=EndTask10Hook.dll"
+set "BUILD_DIR=%~dp0build\bin\Release"
 
-echo =====================================
-echo   EndTask10 - One-Click Setup
-echo   Ctrl+Shift+E to End Task
-echo =====================================
-echo.
-
-:: Detect paths
-set "SCRIPT_DIR=%~dp0"
-set "BUILD_DIR="
-
-if exist "%SCRIPT_DIR%build\bin\Release\%EXE_NAME%" (
-    set "BUILD_DIR=%SCRIPT_DIR%build\bin\Release"
-) else if exist "%SCRIPT_DIR%%EXE_NAME%" (
-    set "BUILD_DIR=%SCRIPT_DIR%"
-) else if exist ".\build\bin\Release\%EXE_NAME%" (
-    set "BUILD_DIR=.\build\bin\Release"
-) else (
-    echo [ERROR] Build output not found.
-    echo         Run build.bat first or place built files in:
-    echo         %SCRIPT_DIR%build\bin\Release\
-    pause
-    exit /b 1
+if not exist "%BUILD_DIR%\EndTask10Launcher.exe" (
+    echo [ERROR] Build not found. Run build.bat first.
+    pause & exit /b 1
 )
 
-echo Found build at: %BUILD_DIR%
+echo =====================================
+echo   EndTask10 - Setup
+echo =====================================
+echo.
 
-:: Create app directory
+:: Try unload first (for new DLLs that support it)
+"%APP_DIR%\EndTask10Launcher.exe" /unload >nul 2>&1
+
+:: Create app dir
 if not exist "%APP_DIR%" mkdir "%APP_DIR%"
 
-:: Copy files
-copy /Y "%BUILD_DIR%\%EXE_NAME%" "%APP_DIR%\" >nul && echo [OK] Copied %EXE_NAME% || echo [FAIL] %EXE_NAME%
-copy /Y "%BUILD_DIR%\%DLL_NAME%" "%APP_DIR%\" >nul && echo [OK] Copied %DLL_NAME% || echo [FAIL] %DLL_NAME%
+:: Copy exe
+copy /Y "%BUILD_DIR%\EndTask10Launcher.exe" "%APP_DIR%\" >nul
+if errorlevel 1 ( echo [FAIL] exe copy & pause & exit /b 1 )
+echo [OK] Copied EndTask10Launcher.exe
 
-:: Add to HKCU Run (auto-inject on login)
+:: Copy DLL (retry if locked)
+copy /Y "%BUILD_DIR%\EndTask10Hook.dll" "%APP_DIR%\" >nul 2>&1
+if errorlevel 1 (
+    echo [WARN] DLL in use by explorer. Trying again after unload...
+    "%APP_DIR%\EndTask10Launcher.exe" /unload >nul 2>&1
+    ping -n 3 127.0.0.1 >nul
+    copy /Y "%BUILD_DIR%\EndTask10Hook.dll" "%APP_DIR%\" >nul 2>&1
+    if errorlevel 1 (
+        echo [FAIL] Copy later manually: %BUILD_DIR%\EndTask10Hook.dll -^> %APP_DIR%\
+        echo        Or just use the build directory directly.
+        goto :reg
+    )
+)
+echo [OK] Copied EndTask10Hook.dll
+
+:reg
 reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" ^
-    /v "EndTask10" ^
-    /t REG_SZ ^
-    /d "\"%APP_DIR%\%EXE_NAME%\"" ^
-    /f >nul 2>&1 && echo [OK] Added to startup
+    /v "EndTask10" /t REG_SZ ^
+    /d "\"%APP_DIR%\EndTask10Launcher.exe\"" /f >nul 2>&1
+echo [OK] Added to startup
 
-:: Inject immediately
 echo.
-echo Injecting into explorer.exe...
-"%APP_DIR%\%EXE_NAME%"
+echo Injecting...
+"%APP_DIR%\EndTask10Launcher.exe"
 
 echo.
 echo =====================================
-echo   Ready! Usage:
-echo   1. Right-click a running app on taskbar
-echo   2. Press Ctrl+Shift+E to end the task
+echo   Ready! Right-click taskbar ^> Ctrl+Shift+E
 echo.
-echo   To uninstall, run uninstall.bat
+echo   Unload: %APP_DIR%\EndTask10Launcher.exe /unload
 echo =====================================
 echo.
 pause

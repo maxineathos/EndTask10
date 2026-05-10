@@ -1,203 +1,185 @@
 #include <windows.h>
-#include <windowsx.h>
+#include <tlhelp32.h>
 #include <shlwapi.h>
 #include <UIAutomation.h>
 #include <OleAcc.h>
-#include "explorer_hooks.h"
 #include "logging.h"
 
 #pragma comment(lib, "oleacc.lib")
 
-static HWINEVENTHOOK g_hEventHook = nullptr;
-static HHOOK g_hGetMsgHook = nullptr;
-static HHOOK g_hKeyboardHook = nullptr;
-static HANDLE g_hEventThread = nullptr;
+static HHOOK g_hGetMsg = nullptr;
+static HHOOK g_hKbd = nullptr;
+static HWINEVENTHOOK g_hEvent = nullptr;
+static HANDLE g_hEvtThread = nullptr;
+static HANDLE g_hUnloadThread = nullptr;
+static HANDLE g_hUnloadEvt = nullptr;
 static volatile bool g_bRunning = false;
-
+static HMODULE g_hMod = nullptr;
 static IUIAutomation* g_pUIA = nullptr;
-static IUIAutomationFocusChangedEventHandler* g_pFocusHandler = nullptr;
 
-// Target app for End Task (set on right-click, consumed on hotkey)
-static struct { DWORD pid; HWND hwnd; wchar_t name[256]; } g_Target = {};
+static struct { DWORD pid; HWND hwnd; wchar_t name[256]; DWORD tick; } g_Target = {};
+#define TARGET_TIMEOUT 8000
 
-class UiaFocusHandler : public IUIAutomationFocusChangedEventHandler
-{
-    LONG m_refCount = 1;
-public:
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override
-    {
-        if (riid == IID_IUnknown || riid == __uuidof(IUIAutomationFocusChangedEventHandler))
-        {
-            *ppv = static_cast<IUIAutomationFocusChangedEventHandler*>(this);
-            AddRef();
-            return S_OK;
-        }
-        *ppv = nullptr;
-        return E_NOINTERFACE;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&m_refCount); }
-    ULONG STDMETHODCALLTYPE Release() override
-    {
-        LONG c = InterlockedDecrement(&m_refCount);
-        if (c == 0) delete this;
-        return (ULONG)c;
-    }
-    HRESULT STDMETHODCALLTYPE HandleFocusChangedEvent(IUIAutomationElement* sender) override
-    {
-        return S_OK;
-    }
-};
-
-static bool IsExplorerProcess()
+static bool IsExplorer()
 {
     wchar_t path[MAX_PATH] = L"";
     GetModuleFileNameW(nullptr, path, MAX_PATH);
-    wchar_t* name = wcsrchr(path, L'\\');
-    name = name ? name + 1 : path;
-    return _wcsicmp(name, L"explorer.exe") == 0;
+    wchar_t* n = wcsrchr(path, L'\\');
+    return _wcsicmp(n ? n + 1 : path, L"explorer.exe") == 0;
 }
 
-struct FindData { const wchar_t* name; HWND hwnd; DWORD pid; };
-
-static BOOL CALLBACK EnumWindowMatch(HWND hwnd, LPARAM lParam)
+static void ClearTarget()
 {
-    FindData* fd = (FindData*)lParam;
+    g_Target.pid = 0; g_Target.hwnd = nullptr;
+    g_Target.name[0] = L'\0'; g_Target.tick = 0;
+}
+
+static bool IsTargetValid()
+{
+    return g_Target.pid && (GetTickCount() - g_Target.tick) <= TARGET_TIMEOUT;
+}
+
+struct FindData { const wchar_t* name; const wchar_t* firstWord; DWORD explorerPid; HWND hwnd; DWORD pid; };
+
+static BOOL CALLBACK EnumMatchByName(HWND hwnd, LPARAM lp)
+{
+    FindData* fd = (FindData*)lp;
     if (!IsWindowVisible(hwnd)) return TRUE;
     wchar_t title[512] = L"";
-    if (!GetWindowTextW(hwnd, title, 512)) return TRUE;
+    GetWindowTextW(hwnd, title, 512);
     if (!title[0]) return TRUE;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == fd->explorerPid) return TRUE;
 
-    // Case-insensitive matching
-    if (StrStrIW(title, fd->name) || StrStrIW(fd->name, title))
-    {
-        fd->hwnd = hwnd;
-        GetWindowThreadProcessId(hwnd, &fd->pid);
-        return FALSE;
+    // Match: title contains accessible name, or name contains title
+    if (StrStrIW(title, fd->name) || StrStrIW(fd->name, title)) {
+        fd->hwnd = hwnd; fd->pid = pid; return FALSE;
     }
-
-    // Try matching first word of accessible name against window title
-    wchar_t firstWord[128] = L"";
-    int pos = 0;
-    while (fd->name[pos] && fd->name[pos] != L' ' && fd->name[pos] != L'-' && pos < 127)
-    {
-        firstWord[pos] = fd->name[pos];
-        pos++;
+    // Fallback: title contains first word of accessible name (e.g. "Spotify")
+    if (fd->firstWord && StrStrIW(title, fd->firstWord)) {
+        fd->hwnd = hwnd; fd->pid = pid; return FALSE;
     }
-    firstWord[pos] = L'\0';
-    if (firstWord[0] && wcslen(firstWord) > 2 && StrStrIW(title, firstWord))
-    {
-        fd->hwnd = hwnd;
-        GetWindowThreadProcessId(hwnd, &fd->pid);
-        return FALSE;
-    }
-
     return TRUE;
 }
 
-static void IdentifyTargetFromPoint(POINT pt)
+static void GetFirstWord(const wchar_t* src, wchar_t* dst, int max)
 {
-    g_Target.pid = 0;
-    g_Target.hwnd = nullptr;
-    g_Target.name[0] = L'\0';
+    int i = 0;
+    while (src[i] && src[i] != L' ' && src[i] != L'-' && i < max - 1) {
+        dst[i] = src[i]; i++;
+    }
+    dst[i] = L'\0';
+}
 
+static void IdentifyTarget(POINT pt)
+{
+    ClearTarget();
     wchar_t accName[256] = L"";
 
-    if (g_pUIA)
-    {
+    if (g_pUIA) {
         IUIAutomationElement* el = nullptr;
-        if (g_pUIA->ElementFromPoint(pt, &el) == S_OK && el)
-        {
-            BSTR bName = nullptr;
-            if (el->get_CurrentName(&bName) == S_OK && bName)
-            {
-                wcsncpy_s(accName, bName, _TRUNCATE);
-                SysFreeString(bName);
+        if (g_pUIA->ElementFromPoint(pt, &el) == S_OK && el) {
+            BSTR name = nullptr;
+            if (el->get_CurrentName(&name) == S_OK && name) {
+                wcsncpy_s(accName, name, _TRUNCATE);
+                SysFreeString(name);
             }
-
-            // Try getting native HWND directly from UIA element
-            UIA_HWND nativeHwnd = 0;
-            if (el->get_CurrentNativeWindowHandle(&nativeHwnd) == S_OK && nativeHwnd)
-            {
-                g_Target.hwnd = (HWND)nativeHwnd;
-                GetWindowThreadProcessId(g_Target.hwnd, &g_Target.pid);
-                LogMessage(L"UIA native HWND: %p pid=%lu", g_Target.hwnd, g_Target.pid);
-            }
-
-            // Try getting PID directly from UIA element
-            int rawPid = 0;
-            if (!g_Target.pid && el->get_CurrentProcessId(&rawPid) == S_OK && rawPid > 0)
-            {
-                g_Target.pid = (DWORD)rawPid;
-                LogMessage(L"UIA raw PID: %lu", g_Target.pid);
-            }
-
             el->Release();
         }
     }
 
-    // Fallback: classic accessibility
-    if (accName[0] == L'\0')
-    {
-        IAccessible* pAcc = nullptr;
+    if (!accName[0]) {
+        IAccessible* acc = nullptr;
         VARIANT var = { VT_I4 };
-        var.lVal = CHILDID_SELF;
-        if (AccessibleObjectFromPoint(pt, &pAcc, &var) == S_OK && pAcc)
-        {
-            BSTR bName = nullptr;
-            if (pAcc->get_accName(var, &bName) == S_OK && bName)
-            {
-                wcsncpy_s(accName, bName, _TRUNCATE);
-                SysFreeString(bName);
+        if (AccessibleObjectFromPoint(pt, &acc, &var) == S_OK && acc) {
+            BSTR name = nullptr;
+            if (acc->get_accName(var, &name) == S_OK && name) {
+                wcsncpy_s(accName, name, _TRUNCATE);
+                SysFreeString(name);
             }
-            pAcc->Release();
+            acc->Release();
         }
     }
 
-    // Find matching visible window by title (fallback if no native HWND from UIA)
-    if (!g_Target.hwnd && accName[0])
-    {
+    if (accName[0]) {
         wcsncpy_s(g_Target.name, accName, _TRUNCATE);
-        FindData fd = { g_Target.name, nullptr, 0 };
-        EnumWindows(EnumWindowMatch, (LPARAM)&fd);
-        g_Target.hwnd = fd.hwnd;
-        g_Target.pid = fd.pid;
+        wchar_t firstWord[128] = L"";
+        GetFirstWord(accName, firstWord, 128);
+        DWORD explorerPid = GetCurrentProcessId();
+        FindData fd = { g_Target.name, firstWord[0] && wcslen(firstWord) > 2 ? firstWord : nullptr, explorerPid, nullptr, 0 };
+        EnumWindows(EnumMatchByName, (LPARAM)&fd);
+        if (fd.hwnd && fd.pid) {
+            g_Target.hwnd = fd.hwnd;
+            g_Target.pid = fd.pid;
+            GetWindowTextW(g_Target.hwnd, g_Target.name, 256);
+        }
     }
 
+    // Last resort: try process name matching
+    if (!g_Target.hwnd && accName[0]) {
+        wchar_t firstWord[128] = L"";
+        GetFirstWord(accName, firstWord, 128);
+        if (firstWord[0]) {
+            HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if (snap != INVALID_HANDLE_VALUE) {
+                PROCESSENTRY32W pe = { sizeof(pe) };
+                if (Process32FirstW(snap, &pe)) do {
+                    if (pe.th32ProcessID == GetCurrentProcessId()) continue;
+                    wchar_t exe[128] = L"";
+                    wcscpy_s(exe, _countof(exe), pe.szExeFile);
+                    wchar_t* dot = wcsrchr(exe, L'.');
+                    if (dot) *dot = L'\0';
+                    if (StrStrIW(exe, firstWord) || StrStrIW(firstWord, exe)) {
+                        // Set PID immediately — TerminateProcess doesn't need an HWND
+                        g_Target.pid = pe.th32ProcessID;
+                        g_Target.hwnd = nullptr;
+                        wcsncpy_s(g_Target.name, pe.szExeFile, _TRUNCATE);
+                        // Try to find a visible window for a better name
+                        HWND hw = FindWindowW(nullptr, nullptr);
+                        while (hw) {
+                            DWORD pid = 0;
+                            GetWindowThreadProcessId(hw, &pid);
+                            if (pid == pe.th32ProcessID && IsWindowVisible(hw)) {
+                                GetWindowTextW(hw, g_Target.name, 256);
+                                g_Target.hwnd = hw;
+                                break;
+                            }
+                            hw = GetNextWindow(hw, GW_HWNDNEXT);
+                        }
+                        break;
+                    }
+                } while (Process32NextW(snap, &pe));
+                CloseHandle(snap);
+            }
+        }
+    }
+
+    g_Target.tick = GetTickCount();
     LogMessage(L"Target: '%s' hwnd=%p pid=%lu", g_Target.name, g_Target.hwnd, g_Target.pid);
 }
 
 static LRESULT CALLBACK LowLevelKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 {
-    if (code >= 0 && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN))
-    {
+    if (code >= 0 && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)) {
         KBDLLHOOKSTRUCT* kb = (KBDLLHOOKSTRUCT*)lParam;
-        // Ctrl+Shift+End to End Task
-        if (kb->vkCode == 0x45 &&
-            (GetAsyncKeyState(VK_CONTROL) & 0x8000) &&
-            (GetAsyncKeyState(VK_SHIFT) & 0x8000))
-        {
-            LogMessage(L"Ctrl+Shift+E pressed!");
-            if (g_Target.pid != 0)
-            {
-                LogMessage(L"Ending task: '%s' pid=%lu", g_Target.name, g_Target.pid);
-                HANDLE hProc = OpenProcess(PROCESS_TERMINATE, FALSE, g_Target.pid);
-                if (hProc)
-                {
-                    TerminateProcess(hProc, 1);
-                    CloseHandle(hProc);
-                    LogMessage(L"Process terminated");
-                }
-                else
-                {
-                    LogMessage(L"OpenProcess failed: %lu", GetLastError());
-                }
-                g_Target.pid = 0;
-                g_Target.hwnd = nullptr;
-                g_Target.name[0] = L'\0';
+        if (kb->vkCode == VK_ESCAPE && g_Target.pid) { ClearTarget(); return CallNextHookEx(nullptr, code, wParam, lParam); }
+        if (kb->vkCode == 0x45 && (GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_SHIFT) & 0x8000)) {
+            // If target is stale, try re-identifying from current cursor position
+            if (!IsTargetValid()) {
+                LogMessage(L"Target stale (pid=%lu age=%lums), re-identifying...", g_Target.pid, g_Target.tick ? (GetTickCount() - g_Target.tick) : 0);
+                POINT curPt;
+                GetCursorPos(&curPt);
+                IdentifyTarget(curPt);
             }
-            else
-            {
-                LogMessage(L"No target set");
+            if (IsTargetValid()) {
+                LogMessage(L"Killing '%s' pid=%lu", g_Target.name, g_Target.pid);
+                HANDLE hp = OpenProcess(PROCESS_TERMINATE, FALSE, g_Target.pid);
+                if (hp) { TerminateProcess(hp, 1); CloseHandle(hp); LogMessage(L"Killed"); }
+                else LogMessage(L"OpenProcess failed: %lu", GetLastError());
+                ClearTarget();
+            } else {
+                LogMessage(L"No valid target after re-identification");
             }
             return 1;
         }
@@ -205,32 +187,26 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int code, WPARAM wParam, LPARAM lPa
     return CallNextHookEx(nullptr, code, wParam, lParam);
 }
 
-void CALLBACK WinEventProc(HWINEVENTHOOK hook, DWORD event, HWND hwnd,
-    LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime)
-{
-    if (event == EVENT_SYSTEM_MENUPOPUPSTART || event == EVENT_SYSTEM_MENUSTART)
-    {
-        wchar_t cls[64] = L"", txt[256] = L"";
-        GetClassNameW(hwnd, cls, 64);
-        GetWindowTextW(hwnd, txt, 256);
-        LogMessage(L"MENU_EVENT(%d): cls='%s' txt='%s'", event, cls, txt);
-    }
-}
-
 static LRESULT CALLBACK GetMsgHookProc(int code, WPARAM wParam, LPARAM lParam)
 {
-    if (code >= 0 && wParam == PM_REMOVE && IsExplorerProcess())
-    {
+    if (code >= 0 && wParam == PM_REMOVE) {
         MSG* msg = (MSG*)lParam;
-        if (msg->message == WM_RBUTTONDOWN)
-        {
+        if (msg->message == WM_RBUTTONDOWN) {
             wchar_t cls[64] = L"";
             GetClassNameW(msg->hwnd, cls, 64);
             if (wcsstr(cls, L"MSTask") || wcsstr(cls, L"Shell_Tray") ||
-                wcsstr(cls, L"ReBar") || wcsstr(cls, L"WorkerW"))
-            {
-                LogMessage(L"Right-click on %s at %d,%d", cls, msg->pt.x, msg->pt.y);
-                IdentifyTargetFromPoint(msg->pt);
+                wcsstr(cls, L"ReBar") || wcsstr(cls, L"WorkerW")) {
+                LogMessage(L"Right-click on %s (%d,%d)", cls, msg->pt.x, msg->pt.y);
+                IdentifyTarget(msg->pt);
+            }
+        }
+        else if (msg->message == WM_LBUTTONDOWN && g_Target.pid) {
+            wchar_t cls[64] = L"";
+            GetClassNameW(msg->hwnd, cls, 64);
+            if (wcsstr(cls, L"MSTask") || wcsstr(cls, L"Shell_Tray") ||
+                wcsstr(cls, L"ReBar") || wcsstr(cls, L"WorkerW") || wcsstr(cls, L"Desktop")) {
+                DWORD age = g_Target.tick ? (GetTickCount() - g_Target.tick) : 0;
+                LogMessage(L"Left-click on %s age=%lums (ignored)", cls, age);
             }
         }
     }
@@ -239,122 +215,97 @@ static LRESULT CALLBACK GetMsgHookProc(int code, WPARAM wParam, LPARAM lParam)
 
 static void SetupUIA()
 {
-    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    LogMessage(L"CoInitializeEx: hr=x%08x", hr);
-
-    hr = CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
         IID_IUIAutomation, (void**)&g_pUIA);
-    LogMessage(L"CoCreateInstance UIA: hr=x%08x p=%p", hr, g_pUIA);
-
-    if (g_pUIA)
-    {
-        g_pFocusHandler = new UiaFocusHandler();
-        hr = g_pUIA->AddFocusChangedEventHandler(nullptr, g_pFocusHandler);
-        LogMessage(L"AddFocusChangedEventHandler: hr=x%08x", hr);
-    }
 }
 
 static void CleanupUIA()
 {
-    if (g_pUIA && g_pFocusHandler)
-        g_pUIA->RemoveFocusChangedEventHandler(g_pFocusHandler);
-    if (g_pFocusHandler) { g_pFocusHandler->Release(); g_pFocusHandler = nullptr; }
     if (g_pUIA) { g_pUIA->Release(); g_pUIA = nullptr; }
     CoUninitialize();
 }
 
-static void InstallHooks(HMODULE hMod)
+static void InstallHooks()
 {
-    // WH_GETMESSAGE: detect right-clicks on taskbar (local hook, no DLL injection)
-    DWORD mainTid = GetWindowThreadProcessId(FindWindowW(L"Shell_TrayWnd", nullptr), nullptr);
-    if (mainTid)
-    {
-        g_hGetMsgHook = SetWindowsHookExW(WH_GETMESSAGE, GetMsgHookProc, nullptr, mainTid);
-        LogMessage(L"WH_GETMESSAGE hook (tid=%lu): %p", mainTid, g_hGetMsgHook);
+    DWORD tid = GetWindowThreadProcessId(FindWindowW(L"Shell_TrayWnd", nullptr), nullptr);
+    if (tid) {
+        g_hGetMsg = SetWindowsHookExW(WH_GETMESSAGE, GetMsgHookProc, nullptr, tid);
+        LogMessage(L"WH_GETMESSAGE (tid=%lu): %p", tid, g_hGetMsg);
     }
-
-    // WH_KEYBOARD_LL: detect Ctrl+Shift+End globally (runs on our thread, hMod=NULL = no DLL injection)
-    g_hKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, nullptr, 0);
-    LogMessage(L"WH_KEYBOARD_LL hook: %p", g_hKeyboardHook);
+    g_hKbd = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, nullptr, 0);
+    LogMessage(L"WH_KEYBOARD_LL: %p", g_hKbd);
 }
 
-static DWORD WINAPI EventThreadProc(LPVOID lpParam)
+static DWORD WINAPI EventThreadProc(LPVOID)
 {
-    HMODULE hMod = (HMODULE)lpParam;
     LogMessage(L"EventThread started (tid=%lu)", GetCurrentThreadId());
-
     SetupUIA();
-    InstallHooks(hMod);
-
-    g_hEventHook = SetWinEventHook(
-        EVENT_SYSTEM_MENUSTART, EVENT_SYSTEM_MENUPOPUPEND,
-        hMod, WinEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
-    LogMessage(L"Menu event hook: %p", g_hEventHook);
-
+    InstallHooks();
+    g_hEvent = SetWinEventHook(EVENT_SYSTEM_MENUSTART, EVENT_SYSTEM_MENUPOPUPEND,
+        nullptr, [](HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD) {},
+        0, 0, WINEVENT_OUTOFCONTEXT);
     MSG msg;
-    while (g_bRunning && GetMessageW(&msg, nullptr, 0, 0))
-    {
+    while (g_bRunning && GetMessageW(&msg, nullptr, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
-
     LogMessage(L"EventThread exiting");
     return 0;
 }
 
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
+static DWORD WINAPI UnloadThreadProc(LPVOID)
 {
-    switch (dwReason)
-    {
-    case DLL_PROCESS_ATTACH:
-    {
-        DisableThreadLibraryCalls(hModule);
-
-        if (!IsExplorerProcess())
-            break;
-
-        LogInit();
-        LogMessage(L"======================================");
-        LogMessage(L"EndTask10Hook.dll loaded (hModule=%p)", hModule);
-        LogMessage(L"======================================");
-
-        g_bRunning = true;
-        g_hEventThread = CreateThread(nullptr, 0, EventThreadProc, hModule, 0, nullptr);
-        LogMessage(L"EventThread: %p", g_hEventThread);
-
-        InitializeHooks();
-        LogMessage(L"DLL_PROCESS_ATTACH complete");
-        break;
+    LogMessage(L"UnloadThread waiting...");
+    WaitForSingleObject(g_hUnloadEvt, INFINITE);
+    LogMessage(L"Unload signaled, cleaning up");
+    g_bRunning = false;
+    if (g_hEvtThread) {
+        PostThreadMessageW(GetThreadId(g_hEvtThread), WM_QUIT, 0, 0);
+        WaitForSingleObject(g_hEvtThread, 1000);
+        CloseHandle(g_hEvtThread); g_hEvtThread = nullptr;
     }
+    if (g_hGetMsg) { UnhookWindowsHookEx(g_hGetMsg); g_hGetMsg = nullptr; }
+    if (g_hKbd) { UnhookWindowsHookEx(g_hKbd); g_hKbd = nullptr; }
+    if (g_hEvent) { UnhookWinEvent(g_hEvent); g_hEvent = nullptr; }
+    CleanupUIA();
+    LogMessage(L"Freeing library");
+    FreeLibraryAndExitThread(g_hMod, 0);
+    return 0;
+}
 
+BOOL APIENTRY DllMain(HMODULE hMod, DWORD reason, LPVOID)
+{
+    switch (reason) {
+    case DLL_PROCESS_ATTACH:
+        DisableThreadLibraryCalls(hMod);
+        if (!IsExplorer()) break;
+        g_hMod = hMod;
+        LogInit();
+        LogMessage(L"==============================================");
+        LogMessage(L"EndTask10Hook loaded in explorer (hMod=%p)", hMod);
+        g_hUnloadEvt = CreateEventW(nullptr, TRUE, FALSE, L"Global\\EndTask10_Unload");
+        g_bRunning = true;
+        g_hEvtThread = CreateThread(nullptr, 0, EventThreadProc, nullptr, 0, nullptr);
+        g_hUnloadThread = CreateThread(nullptr, 0, UnloadThreadProc, nullptr, 0, nullptr);
+        LogMessage(L"Load complete");
+        break;
     case DLL_PROCESS_DETACH:
-    {
-        if (!IsExplorerProcess())
-            break;
-
-        LogMessage(L"Unloading...");
+        if (!IsExplorer()) break;
+        LogMessage(L"Detaching...");
         g_bRunning = false;
-        if (g_hEventThread)
-        {
-            PostThreadMessageW(GetThreadId(g_hEventThread), WM_QUIT, 0, 0);
-            WaitForSingleObject(g_hEventThread, 1000);
-            CloseHandle(g_hEventThread);
+        if (g_hEvtThread) {
+            PostThreadMessageW(GetThreadId(g_hEvtThread), WM_QUIT, 0, 0);
+            WaitForSingleObject(g_hEvtThread, 1000);
+            CloseHandle(g_hEvtThread);
         }
-        if (g_hGetMsgHook) UnhookWindowsHookEx(g_hGetMsgHook);
-        if (g_hKeyboardHook) UnhookWindowsHookEx(g_hKeyboardHook);
-        if (g_hEventHook) UnhookWinEvent(g_hEventHook);
+        if (g_hGetMsg) UnhookWindowsHookEx(g_hGetMsg);
+        if (g_hKbd) UnhookWindowsHookEx(g_hKbd);
+        if (g_hEvent) UnhookWinEvent(g_hEvent);
         CleanupUIA();
-        UninitializeHooks();
+        if (g_hUnloadEvt) CloseHandle(g_hUnloadEvt);
         LogCleanup();
         break;
     }
-
-    case DLL_THREAD_ATTACH:
-    case DLL_THREAD_DETACH:
-        break;
-    }
-
     return TRUE;
 }
-
-extern "C" __declspec(dllexport) void TestExport() {}

@@ -1,66 +1,41 @@
 #include "logging.h"
 #include <stdio.h>
 #include <stdarg.h>
-#include <time.h>
 
-static HANDLE g_hLogFile = INVALID_HANDLE_VALUE;
-static CRITICAL_SECTION g_LogCS;
+static HANDLE g_hLog = INVALID_HANDLE_VALUE;
+static CRITICAL_SECTION g_cs;
 
 void LogInit()
 {
-    InitializeCriticalSection(&g_LogCS);
-
-    wchar_t szLogPath[MAX_PATH];
-    if (!GetEnvironmentVariableW(L"TEMP", szLogPath, _countof(szLogPath)))
-    {
-        wcscpy_s(szLogPath, _countof(szLogPath), L"C:\\Temp");
-    }
-    wcscat_s(szLogPath, _countof(szLogPath), L"\\EndTask10Debug.log");
-
-    g_hLogFile = CreateFileW(
-        szLogPath, FILE_APPEND_DATA, FILE_SHARE_READ,
-        nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr
-    );
+    InitializeCriticalSection(&g_cs);
+    wchar_t path[MAX_PATH];
+    if (!GetEnvironmentVariableW(L"TEMP", path, MAX_PATH))
+        wcscpy_s(path, L"C:\\Temp");
+    wcscat_s(path, L"\\EndTask10.log");
+    g_hLog = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ,
+        nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 }
 
 void LogCleanup()
 {
-    if (g_hLogFile != INVALID_HANDLE_VALUE)
-    {
-        CloseHandle(g_hLogFile);
-        g_hLogFile = INVALID_HANDLE_VALUE;
-    }
-    DeleteCriticalSection(&g_LogCS);
+    if (g_hLog != INVALID_HANDLE_VALUE) { CloseHandle(g_hLog); g_hLog = INVALID_HANDLE_VALUE; }
+    DeleteCriticalSection(&g_cs);
 }
 
-void LogMessage(const wchar_t* format, ...)
+void LogMessage(const wchar_t* fmt, ...)
 {
-    if (g_hLogFile == INVALID_HANDLE_VALUE)
-        return;
-
-    EnterCriticalSection(&g_LogCS);
-
-    va_list args;
-    va_start(args, format);
-
-    wchar_t buffer[1024];
-    vswprintf_s(buffer, _countof(buffer), format, args);
-    va_end(args);
-
+    if (g_hLog == INVALID_HANDLE_VALUE) return;
+    EnterCriticalSection(&g_cs);
+    va_list ap;
+    va_start(ap, fmt);
+    wchar_t buf[1024];
+    vswprintf_s(buf, _countof(buf), fmt, ap);
+    va_end(ap);
     SYSTEMTIME st;
     GetSystemTime(&st);
-
-    wchar_t szLine[2048];
-    int cch = swprintf_s(szLine, _countof(szLine),
-        L"[%04d-%02d-%02d %02d:%02d:%02d.%03d] %s\r\n",
-        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
-        buffer);
-
-    if (cch > 0)
-    {
-        DWORD dwWritten;
-        WriteFile(g_hLogFile, szLine, (DWORD)(cch * sizeof(wchar_t)), &dwWritten, nullptr);
-    }
-
-    LeaveCriticalSection(&g_LogCS);
+    wchar_t line[2048];
+    int n = swprintf_s(line, _countof(line), L"[%02d:%02d:%02d.%03d] %s\r\n",
+        st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, buf);
+    if (n > 0) { DWORD w; WriteFile(g_hLog, line, n * 2, &w, nullptr); }
+    LeaveCriticalSection(&g_cs);
 }
