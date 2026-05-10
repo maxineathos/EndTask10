@@ -143,6 +143,28 @@ Windows 10 taskbar running-app context menus are XAML-based (`MenuFlyout`), rend
 
 Both versions use the same explorer.exe process model and taskbar infrastructure.
 
+## FAQ
+
+### Why does Steam restart after I kill it?
+
+Steam has an internal watchdog mechanism that detects when its process is terminated, regardless of how it was killed (Task Manager, EndTask10, or even Windows 11's built-in "End Task"). It's a deliberate design choice by Valve. The tool still works as an **anti-crash** — if Steam freezes, you can kill it to get unstuck, even if it restarts afterward.
+
+### Why does my antivirus flag EndTask10?
+
+EndTask10 injects a DLL into `explorer.exe` using `CreateRemoteThread` — a technique also used by malware. This triggers false positives. Add an exception for `%LOCALAPPDATA%\EndTask10\` or the extracted folder. The source code is fully open for review.
+
+### Does EndTask10 work on Windows 11?
+
+Yes. It works on both Windows 10 and Windows 11. On Windows 11 it acts as an alternative keyboard shortcut alongside the built-in "End Task" menu option.
+
+### Why does it need administrator privileges?
+
+The setup requests admin to stop background services that restart killed apps (e.g. Steam Client Service, Epic Online Services). The tool itself works without admin — only service stopping requires elevation.
+
+### Does EndTask10 run in the background?
+
+No. The launcher injects the DLL and exits immediately. A small hook DLL stays loaded inside `explorer.exe` listening for right-clicks and the keyboard shortcut. No tray icon, no visible process.
+
 ## Credits
 
 Inspired by the Windows 11 "End Task" taskbar feature.
