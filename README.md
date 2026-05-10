@@ -2,7 +2,7 @@
 
 > Kill taskbar apps instantly with **Ctrl+Shift+E** — just hover over the icon or right-click — no tray icon, no UI.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: Custom](https://img.shields.io/badge/License-Custom%20(Non--Commercial)-orange.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Platform-Windows%2010%20|%2011%20x64-blue)
 ![Language](https://img.shields.io/badge/Language-C%2B%2B17-purple)
 
@@ -197,4 +197,5 @@ Inspired by the Windows 11 "End Task" taskbar feature.
 
 ## License
 
-This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
+Custom non-commercial license — see [LICENSE](LICENSE) for details.
+Commercial use requires explicit permission from Maxine Athos.
