@@ -159,6 +159,53 @@ static void IdentifyTarget(POINT pt)
     LogMessage(L"Target: '%s' hwnd=%p pid=%lu", g_Target.name, g_Target.hwnd, g_Target.pid);
 }
 
+static void KillProcessFamily(DWORD mainPid)
+{
+    wchar_t mainExe[128] = L"";
+    {
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snap != INVALID_HANDLE_VALUE) {
+            PROCESSENTRY32W pe = { sizeof(pe) };
+            if (Process32FirstW(snap, &pe)) do {
+                if (pe.th32ProcessID == mainPid) {
+                    wcscpy_s(mainExe, _countof(mainExe), pe.szExeFile);
+                    break;
+                }
+            } while (Process32NextW(snap, &pe));
+            CloseHandle(snap);
+        }
+    }
+
+    if (!mainExe[0]) return;
+
+    // Collect PIDs to kill: all children of mainPid + all same-name processes
+    DWORD pids[512];
+    int count = 0;
+    {
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snap != INVALID_HANDLE_VALUE) {
+            PROCESSENTRY32W pe = { sizeof(pe) };
+            if (Process32FirstW(snap, &pe)) do {
+                if (pe.th32ProcessID == mainPid || pe.th32ProcessID == GetCurrentProcessId())
+                    continue;
+                if (pe.th32ParentProcessID == mainPid || _wcsicmp(pe.szExeFile, mainExe) == 0) {
+                    if (count < 512) pids[count++] = pe.th32ProcessID;
+                }
+            } while (Process32NextW(snap, &pe));
+            CloseHandle(snap);
+        }
+    }
+
+    for (int i = 0; i < count; i++) {
+        HANDLE hp = OpenProcess(PROCESS_TERMINATE, FALSE, pids[i]);
+        if (hp) {
+            TerminateProcess(hp, 1);
+            CloseHandle(hp);
+            LogMessage(L"Killed family: pid=%lu", pids[i]);
+        }
+    }
+}
+
 static LRESULT CALLBACK LowLevelKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 {
     if (code >= 0 && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)) {
@@ -175,8 +222,9 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int code, WPARAM wParam, LPARAM lPa
             if (IsTargetValid()) {
                 LogMessage(L"Killing '%s' pid=%lu", g_Target.name, g_Target.pid);
                 HANDLE hp = OpenProcess(PROCESS_TERMINATE, FALSE, g_Target.pid);
-                if (hp) { TerminateProcess(hp, 1); CloseHandle(hp); LogMessage(L"Killed"); }
+                if (hp) { TerminateProcess(hp, 1); CloseHandle(hp); LogMessage(L"Killed main"); }
                 else LogMessage(L"OpenProcess failed: %lu", GetLastError());
+                KillProcessFamily(g_Target.pid);
                 ClearTarget();
             } else {
                 LogMessage(L"No valid target after re-identification");
