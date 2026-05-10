@@ -1,4 +1,4 @@
-# EndTask10
+# EndTask10 💥
 
 > Kill taskbar apps instantly with **Ctrl+Shift+E** — just hover over the icon or right-click — no tray icon, no UI.
 
@@ -12,7 +12,7 @@
 
 Windows 11 ships an **"End Task"** option in the taskbar right-click menu that forcefully terminates a hung application. Windows 10 doesn't have it.
 
-**EndTask10** brings the same functionality to Windows 10 (and works as an alternative keyboard shortcut on Windows 11 too). **Just hover** your mouse over any running app on the taskbar (or its thumbnail preview) and press **Ctrl+Shift+E** — the app is killed instantly. No right-click needed.
+**EndTask10** brings the same functionality to Windows 10 (and works as an alternative keyboard shortcut on Windows 11 too). **Just hover** 🖱️ your mouse over any running app on the taskbar (or its thumbnail preview) and press **Ctrl+Shift+E** — the app is killed instantly. No right-click needed.
 
 ## How it works
 
@@ -75,7 +75,7 @@ This will:
 1. **Right-click** any running app on the taskbar (opens the jump list)
 2. Press **Ctrl+Shift+E** within 8 seconds — the app dies
 
-> **Tip:** Press **Esc** at any time to clear the current target (if you accidentally identified the wrong app).
+> **Tip:** Press **Esc** at any time to clear the current target (if you accidentally identified the wrong app). 🧹
 
 ### Uninstall
 
@@ -171,7 +171,7 @@ Both versions use the same explorer.exe process model and taskbar infrastructure
 
 Both work. **Hover** is the primary mode: just move your mouse over the taskbar icon (or its thumbnail preview) and press **Ctrl+Shift+E** — no clicking needed. The right-click mode is useful if you want to pre-select a target and take your time (up to 8 seconds) before pressing the hotkey.
 
-### Why does Steam restart after I kill it?
+### Why does Steam restart after I kill it? 🔄
 
 Steam has an internal watchdog mechanism that detects when its process is terminated, regardless of how it was killed (Task Manager, EndTask10, or even Windows 11's built-in "End Task"). It's a deliberate design choice by Valve. The tool still works as an **anti-crash** — if Steam freezes, you can kill it to get unstuck, even if it restarts afterward.
 
