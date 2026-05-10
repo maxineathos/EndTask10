@@ -244,29 +244,33 @@ static void KillProcessFamily(DWORD mainPid)
     }
 }
 
+static void ExecuteKill()
+{
+    if (!IsTargetValid()) {
+        LogMessage(L"Target stale (pid=%lu age=%lums), re-identifying...", g_Target.pid, g_Target.tick ? (GetTickCount() - g_Target.tick) : 0);
+        POINT curPt;
+        GetCursorPos(&curPt);
+        IdentifyTarget(curPt);
+    }
+    if (IsTargetValid()) {
+        LogMessage(L"Killing '%s' pid=%lu", g_Target.name, g_Target.pid);
+        HANDLE hp = OpenProcess(PROCESS_TERMINATE, FALSE, g_Target.pid);
+        if (hp) { TerminateProcess(hp, 1); CloseHandle(hp); LogMessage(L"Killed main"); }
+        else LogMessage(L"OpenProcess failed: %lu", GetLastError());
+        KillProcessFamily(g_Target.pid);
+        ClearTarget();
+    } else {
+        LogMessage(L"No valid target after re-identification");
+    }
+}
+
 static LRESULT CALLBACK LowLevelKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 {
     if (code >= 0 && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)) {
         KBDLLHOOKSTRUCT* kb = (KBDLLHOOKSTRUCT*)lParam;
         if (kb->vkCode == VK_ESCAPE && g_Target.pid) { ClearTarget(); return CallNextHookEx(nullptr, code, wParam, lParam); }
         if (kb->vkCode == 0x45 && (GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_SHIFT) & 0x8000)) {
-            // If target is stale, try re-identifying from current cursor position
-            if (!IsTargetValid()) {
-                LogMessage(L"Target stale (pid=%lu age=%lums), re-identifying...", g_Target.pid, g_Target.tick ? (GetTickCount() - g_Target.tick) : 0);
-                POINT curPt;
-                GetCursorPos(&curPt);
-                IdentifyTarget(curPt);
-            }
-            if (IsTargetValid()) {
-                LogMessage(L"Killing '%s' pid=%lu", g_Target.name, g_Target.pid);
-                HANDLE hp = OpenProcess(PROCESS_TERMINATE, FALSE, g_Target.pid);
-                if (hp) { TerminateProcess(hp, 1); CloseHandle(hp); LogMessage(L"Killed main"); }
-                else LogMessage(L"OpenProcess failed: %lu", GetLastError());
-                KillProcessFamily(g_Target.pid);
-                ClearTarget();
-            } else {
-                LogMessage(L"No valid target after re-identification");
-            }
+            ExecuteKill();
             return 1;
         }
     }
@@ -331,11 +335,17 @@ static DWORD WINAPI EventThreadProc(LPVOID)
     g_hEvent = SetWinEventHook(EVENT_SYSTEM_MENUSTART, EVENT_SYSTEM_MENUPOPUPEND,
         nullptr, [](HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD) {},
         0, 0, WINEVENT_OUTOFCONTEXT);
+    RegisterHotKey(nullptr, 1, MOD_CONTROL | MOD_SHIFT, 0x45);
     MSG msg;
     while (g_bRunning && GetMessageW(&msg, nullptr, 0, 0)) {
+        if (msg.message == WM_HOTKEY && msg.wParam == 1) {
+            ExecuteKill();
+            continue;
+        }
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+    UnregisterHotKey(nullptr, 1);
     LogMessage(L"EventThread exiting");
     return 0;
 }
