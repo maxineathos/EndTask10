@@ -1,5 +1,9 @@
 # EndTask10 💥
 
+<p align="center">
+  <img src="endtask10_logo.png" alt="EndTask10 Logo" width="400"/>
+</p>
+
 > Kill taskbar apps instantly with **Ctrl+Shift+E** ⌨️ — just hover over the icon or right-click — no tray icon, no UI.
 
 [![License: Custom](https://img.shields.io/badge/License-Custom%20(Non--Commercial)-orange.svg)](LICENSE)
