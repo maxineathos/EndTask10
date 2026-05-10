@@ -266,13 +266,9 @@ static void ExecuteKill()
 
 static LRESULT CALLBACK LowLevelKeyboardProc(int code, WPARAM wParam, LPARAM lParam)
 {
-    if (code >= 0 && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)) {
+    if (code >= 0 && wParam == WM_KEYDOWN) {
         KBDLLHOOKSTRUCT* kb = (KBDLLHOOKSTRUCT*)lParam;
-        if (kb->vkCode == VK_ESCAPE && g_Target.pid) { ClearTarget(); return CallNextHookEx(nullptr, code, wParam, lParam); }
-        if (kb->vkCode == 0x45 && (GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_SHIFT) & 0x8000)) {
-            ExecuteKill();
-            return 1;
-        }
+        if (kb->vkCode == VK_ESCAPE && g_Target.pid) ClearTarget();
     }
     return CallNextHookEx(nullptr, code, wParam, lParam);
 }
