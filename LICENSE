@@ -1,10 +1,16 @@
 EndTask10 License
 Copyright (c) 2026 Maxine Athos
 
-Permission is granted to any person obtaining a copy of this software
-to use, modify, merge, publish, and distribute the software for
-non-commercial purposes only, including personal, educational, and
-hobby use.
+The official distribution channel for this software is the GitHub repository:
+    https://github.com/maxineathos/EndTask10
+
+Redistribution of this software, in whole or in part, through any
+channel other than the official repository above is strictly prohibited.
+This includes but is not limited to: re-uploading to other websites,
+hosting on package managers, or bundling in other distributions.
+
+You may use, modify, and compile this software for personal,
+educational, and hobby use only.
 
 Commercial use — including but not limited to selling the software,
 bundling it in a paid product, or using it in a commercial service
@@ -12,7 +18,7 @@ that generates revenue — is strictly prohibited without explicit
 written permission from the copyright holder (Maxine Athos).
 
 The copyright holder retains the exclusive right to sell, license,
-or otherwise commercialize this software.
+commercialize, and distribute this software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
