@@ -3,6 +3,7 @@
 #include <shlwapi.h>
 #include <UIAutomation.h>
 #include <OleAcc.h>
+#include <winsvc.h>
 #include "logging.h"
 
 #pragma comment(lib, "oleacc.lib")
@@ -162,6 +163,7 @@ static void IdentifyTarget(POINT pt)
 static void KillProcessFamily(DWORD mainPid)
 {
     wchar_t mainExe[128] = L"";
+    wchar_t mainExeNoExt[128] = L"";
     {
         HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (snap != INVALID_HANDLE_VALUE) {
@@ -169,6 +171,9 @@ static void KillProcessFamily(DWORD mainPid)
             if (Process32FirstW(snap, &pe)) do {
                 if (pe.th32ProcessID == mainPid) {
                     wcscpy_s(mainExe, _countof(mainExe), pe.szExeFile);
+                    wcscpy_s(mainExeNoExt, _countof(mainExeNoExt), pe.szExeFile);
+                    wchar_t* dot = wcsrchr(mainExeNoExt, L'.');
+                    if (dot) *dot = L'\0';
                     break;
                 }
             } while (Process32NextW(snap, &pe));
@@ -203,6 +208,39 @@ static void KillProcessFamily(DWORD mainPid)
             CloseHandle(hp);
             LogMessage(L"Killed family: pid=%lu", pids[i]);
         }
+    }
+
+    // Try to stop related services (prevents auto-restart, e.g. Steam Client Service)
+    SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT | SC_MANAGER_ENUMERATE_SERVICE);
+    if (scm) {
+        DWORD bufSize = 0, needed = 0, count2 = 0;
+        EnumServicesStatusExW(scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_ACTIVE,
+            nullptr, 0, &needed, &count2, nullptr, nullptr);
+        if (GetLastError() == ERROR_MORE_DATA) {
+            bufSize = needed;
+            ENUM_SERVICE_STATUS_PROCESSW* buf = (ENUM_SERVICE_STATUS_PROCESSW*)HeapAlloc(GetProcessHeap(), 0, bufSize);
+            if (buf) {
+                if (EnumServicesStatusExW(scm, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_ACTIVE,
+                    (LPBYTE)buf, bufSize, &needed, &count2, nullptr, nullptr)) {
+                    for (DWORD i = 0; i < count2; i++) {
+                        // Match by display name containing exe name (e.g. "Steam Client Service" -> "Steam")
+                        if (StrStrIW(buf[i].lpDisplayName, mainExeNoExt)) {
+                            SC_HANDLE svc = OpenServiceW(scm, buf[i].lpServiceName,
+                                SERVICE_STOP | SERVICE_QUERY_STATUS);
+                            if (svc) {
+                                SERVICE_STATUS ss;
+                                if (ControlService(svc, SERVICE_CONTROL_STOP, &ss)) {
+                                    LogMessage(L"Stopped service: %s", buf[i].lpDisplayName);
+                                }
+                                CloseServiceHandle(svc);
+                            }
+                        }
+                    }
+                }
+                HeapFree(GetProcessHeap(), 0, buf);
+            }
+        }
+        CloseServiceHandle(scm);
     }
 }
 
