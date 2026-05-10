@@ -323,6 +323,14 @@ static void InstallHooks()
     LogMessage(L"WH_KEYBOARD_LL: %p", g_hKbd);
 }
 
+static HWND g_hHotkeyWnd = nullptr;
+
+static LRESULT CALLBACK HotkeyWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+    if (msg == WM_HOTKEY && wp == 1) { ExecuteKill(); return 0; }
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
 static DWORD WINAPI EventThreadProc(LPVOID)
 {
     LogMessage(L"EventThread started (tid=%lu)", GetCurrentThreadId());
@@ -331,17 +339,22 @@ static DWORD WINAPI EventThreadProc(LPVOID)
     g_hEvent = SetWinEventHook(EVENT_SYSTEM_MENUSTART, EVENT_SYSTEM_MENUPOPUPEND,
         nullptr, [](HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD) {},
         0, 0, WINEVENT_OUTOFCONTEXT);
-    RegisterHotKey(nullptr, 1, MOD_CONTROL | MOD_SHIFT, 0x45);
+
+    // Create a hidden window to reliably receive hotkey messages (works even with menus)
+    WNDCLASSW wc = { 0, HotkeyWndProc, 0, 0, g_hMod, nullptr, nullptr, nullptr, nullptr, L"EndTask10_Hotkey" };
+    RegisterClassW(&wc);
+    g_hHotkeyWnd = CreateWindowExW(0, L"EndTask10_Hotkey", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, g_hMod, nullptr);
+    RegisterHotKey(g_hHotkeyWnd, 1, MOD_CONTROL | MOD_SHIFT, 0x45);
+    LogMessage(L"Hotkey registered (hwnd=%p)", g_hHotkeyWnd);
+
     MSG msg;
     while (g_bRunning && GetMessageW(&msg, nullptr, 0, 0)) {
-        if (msg.message == WM_HOTKEY && msg.wParam == 1) {
-            ExecuteKill();
-            continue;
-        }
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
-    UnregisterHotKey(nullptr, 1);
+
+    DestroyWindow(g_hHotkeyWnd); g_hHotkeyWnd = nullptr;
+    UnregisterClassW(L"EndTask10_Hotkey", g_hMod);
     LogMessage(L"EventThread exiting");
     return 0;
 }
