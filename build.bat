@@ -18,7 +18,7 @@ if not defined CMAKE (
 
 echo Using cmake: %CMAKE%
 echo Configuring...
-"%CMAKE%" -G "Visual Studio 18 2026" -A x64 -B build 2>&1
+"%CMAKE%" -G "Visual Studio 18 2026" -A x64 -B build 2>&1 || "%CMAKE%" -G "Visual Studio 17 2022" -A x64 -B build 2>&1
 if errorlevel 1 ( echo [ERROR] Configure failed. & pause & exit /b 1 )
 
 echo Building...

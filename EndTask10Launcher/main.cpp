@@ -4,6 +4,7 @@
 
 #define DLL_NAME L"EndTask10Hook.dll"
 #define EVENT_NAME L"Global\\EndTask10_Unload"
+#define READY_EVENT L"Global\\EndTask10_Ready"
 
 static BOOL GetDLLPath(wchar_t* buf, size_t cch)
 {
@@ -144,7 +145,20 @@ int wmain(int argc, wchar_t* argv[])
     wchar_t path[MAX_PATH];
     if (!GetDLLPath(path, MAX_PATH)) { wprintf(L"Failed to get DLL path\n"); return 1; }
 
+    // Reset ready event before injection (DLL will signal after init)
+    HANDLE hReady = CreateEventW(nullptr, TRUE, FALSE, READY_EVENT);
+    ResetEvent(hReady);
+    CloseHandle(hReady);
+
     if (!InjectDLL(pid, path)) return 1;
+
+    hReady = OpenEventW(SYNCHRONIZE, FALSE, READY_EVENT);
+    if (hReady) {
+        wprintf(L"Waiting for DLL to initialize...\n");
+        WaitForSingleObject(hReady, 3000);
+        CloseHandle(hReady);
+        wprintf(L"DLL ready\n");
+    }
     wprintf(L"\nUse '%s /unload' to unload\n", argv[0]);
     return 0;
 }

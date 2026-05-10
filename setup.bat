@@ -72,7 +72,9 @@ echo Injecting...
 
 echo.
 echo =====================================
-echo   Ready! Right-click taskbar ^> Ctrl+Shift+E
+echo   Ready! Hover over taskbar icon ^> Ctrl+Shift+E
+echo.
+echo   Or: Right-click + Ctrl+Shift+E
 echo.
 echo   Note: Services stopped above prevent auto-restart for
 echo   those apps (Steam, Epic, etc.) for this session.

@@ -15,6 +15,8 @@ static HANDLE g_hEvtThread = nullptr;
 static HANDLE g_hUnloadThread = nullptr;
 static HANDLE g_hUnloadEvt = nullptr;
 static volatile bool g_bRunning = false;
+static volatile bool g_bPolling = false;
+static volatile bool g_bPrevHotkeyDown = false;
 static HMODULE g_hMod = nullptr;
 static IUIAutomation* g_pUIA = nullptr;
 
@@ -82,9 +84,32 @@ static void IdentifyTarget(POINT pt)
         IUIAutomationElement* el = nullptr;
         if (g_pUIA->ElementFromPoint(pt, &el) == S_OK && el) {
             BSTR name = nullptr;
-            if (el->get_CurrentName(&name) == S_OK && name) {
+            if (el->get_CurrentName(&name) == S_OK && name && SysStringLen(name) > 0) {
                 wcsncpy_s(accName, name, _TRUNCATE);
                 SysFreeString(name);
+            } else {
+                if (name) SysFreeString(name);
+                // Walk up the UIA tree (e.g. from thumbnail preview to taskbar button)
+                IUIAutomationTreeWalker* walker = nullptr;
+                if (g_pUIA->get_ControlViewWalker(&walker) == S_OK && walker) {
+                    IUIAutomationElement* cur = el;
+                    for (int d = 0; d < 10; d++) {
+                        IUIAutomationElement* parent = nullptr;
+                        if (walker->GetParentElement(cur, &parent) != S_OK || !parent)
+                            break;
+                        if (cur != el) cur->Release();
+                        cur = parent;
+                        BSTR pname = nullptr;
+                        if (cur->get_CurrentName(&pname) == S_OK && pname && SysStringLen(pname) > 0) {
+                            wcsncpy_s(accName, pname, _TRUNCATE);
+                            SysFreeString(pname);
+                            break;
+                        }
+                        if (pname) SysFreeString(pname);
+                    }
+                    if (cur != el) cur->Release();
+                    walker->Release();
+                }
             }
             el->Release();
         }
@@ -268,7 +293,7 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int code, WPARAM wParam, LPARAM lPa
 {
     if (code >= 0 && wParam == WM_KEYDOWN) {
         KBDLLHOOKSTRUCT* kb = (KBDLLHOOKSTRUCT*)lParam;
-        if (kb->vkCode == VK_ESCAPE && g_Target.pid) ClearTarget();
+        if (kb->vkCode == VK_ESCAPE && g_Target.pid) { ClearTarget(); g_bPolling = FALSE; }
     }
     return CallNextHookEx(nullptr, code, wParam, lParam);
 }
@@ -284,6 +309,7 @@ static LRESULT CALLBACK GetMsgHookProc(int code, WPARAM wParam, LPARAM lParam)
                 wcsstr(cls, L"ReBar") || wcsstr(cls, L"WorkerW")) {
                 LogMessage(L"Right-click on %s (%d,%d)", cls, msg->pt.x, msg->pt.y);
                 IdentifyTarget(msg->pt);
+                if (g_Target.pid) g_bPolling = TRUE;
             }
         }
         else if (msg->message == WM_LBUTTONDOWN && g_Target.pid) {
@@ -323,14 +349,6 @@ static void InstallHooks()
     LogMessage(L"WH_KEYBOARD_LL: %p", g_hKbd);
 }
 
-static HWND g_hHotkeyWnd = nullptr;
-
-static LRESULT CALLBACK HotkeyWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
-{
-    if (msg == WM_HOTKEY && wp == 1) { ExecuteKill(); return 0; }
-    return DefWindowProcW(hwnd, msg, wp, lp);
-}
-
 static DWORD WINAPI EventThreadProc(LPVOID)
 {
     LogMessage(L"EventThread started (tid=%lu)", GetCurrentThreadId());
@@ -340,22 +358,59 @@ static DWORD WINAPI EventThreadProc(LPVOID)
         nullptr, [](HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD) {},
         0, 0, WINEVENT_OUTOFCONTEXT);
 
-    // Create a hidden window to reliably receive hotkey messages (works even with menus)
-    WNDCLASSW wc = { 0, HotkeyWndProc, 0, 0, g_hMod, nullptr, nullptr, nullptr, nullptr, L"EndTask10_Hotkey" };
-    RegisterClassW(&wc);
-    g_hHotkeyWnd = CreateWindowExW(0, L"EndTask10_Hotkey", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, g_hMod, nullptr);
-    RegisterHotKey(g_hHotkeyWnd, 1, MOD_CONTROL | MOD_SHIFT, 0x45);
-    LogMessage(L"Hotkey registered (hwnd=%p)", g_hHotkeyWnd);
+    HANDLE hReady = CreateEventW(nullptr, TRUE, FALSE, L"Global\\EndTask10_Ready");
+    SetEvent(hReady);
+    CloseHandle(hReady);
 
-    MSG msg;
-    while (g_bRunning && GetMessageW(&msg, nullptr, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+    while (g_bRunning)
+    {
+        DWORD wait = MsgWaitForMultipleObjects(1, &g_hUnloadEvt, FALSE, 100, QS_ALLINPUT);
+        if (wait == WAIT_OBJECT_0) break;
+
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) { g_bRunning = false; break; }
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+
+        if (g_bPolling && IsTargetValid()) {
+            if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) &&
+                (GetAsyncKeyState(VK_SHIFT) & 0x8000) &&
+                (GetAsyncKeyState('E') & 0x8000)) {
+                LogMessage(L"Ctrl+Shift+E detected via poll");
+                ExecuteKill();
+                g_bPolling = FALSE;
+            }
+        }
+
+        if (g_bPolling && !IsTargetValid())
+            g_bPolling = FALSE;
+
+        bool hotkeyDown = (GetAsyncKeyState(VK_CONTROL) & 0x8000) &&
+                          (GetAsyncKeyState(VK_SHIFT) & 0x8000) &&
+                          (GetAsyncKeyState('E') & 0x8000);
+
+        if (hotkeyDown && !g_bPrevHotkeyDown) {
+            LogMessage(L"Ctrl+Shift+E rising edge; polling=%d valid=%d", g_bPolling, IsTargetValid());
+            if (g_bPolling && IsTargetValid()) {
+                ExecuteKill();
+                g_bPolling = FALSE;
+            } else {
+                POINT pt;
+                GetCursorPos(&pt);
+                IdentifyTarget(pt);
+                if (IsTargetValid()) {
+                    LogMessage(L"Kill from hover");
+                    ExecuteKill();
+                }
+            }
+        }
+        g_bPrevHotkeyDown = hotkeyDown;
     }
 
-    DestroyWindow(g_hHotkeyWnd); g_hHotkeyWnd = nullptr;
-    UnregisterClassW(L"EndTask10_Hotkey", g_hMod);
     LogMessage(L"EventThread exiting");
+    CleanupUIA();
     return 0;
 }
 
