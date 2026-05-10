@@ -30,7 +30,7 @@
 EndTask10 makes it a **single keystroke**: hover your mouse over any taskbar icon and press **Ctrl+Shift+End**. That's it.
 
 <p align="center">
-  <img src="[EndTask10 Demo](https://i.imgur.com/5hzrsDl.mp4)" alt="EndTask10 Demo" width="100%"/>
+  <img src="https://i.imgur.com/5hzrsDl.mp4" alt="EndTask10 Demo" width="100%"/>
   <br/>
   <i>Hover + Ctrl+Shift+End = done. No menus, no clicking, no waiting.</i>
 </p>
