@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <i>Instantly end frozen apps. Just hover and press <b>CTRL + SHIFT + END</b></i>
+  <i>Instantly end frozen apps. Just hover and press <b>CTRL + SHIFT + E</b></i>
 </p>
 
 <p align="center">
@@ -27,14 +27,14 @@
 
 **Windows 10** doesn't have it. And even on Windows 11, you still need to right-click and navigate a menu — two extra steps when your app is frozen and every second counts.
 
-EndTask10 makes it a **single keystroke**: hover your mouse over any taskbar icon and press **Ctrl+Shift+End**. That's it.
+EndTask10 makes it a **single keystroke**: hover your mouse over any taskbar icon and press **Ctrl+Shift+E**. That's it.
 
 <p align="center">
   <a href="https://github.com/user-attachments/assets/0f614778-676c-4ed6-80d5-fdd3fc3f9d50" target="_blank">
     <img src="https://i.imgur.com/NMNbQNt.png" alt="EndTask10 Demo" width="100%"/>
   </a>
   <br/>
-  <i>Click to watch the demo — Hover + Ctrl+Shift+End = done. No menus, no clicking, no waiting.</i>
+  <i>Click to watch the demo — Hover + Ctrl+Shift+E = done. No menus, no clicking, no waiting.</i>
 </p>
 
 No tray icons, no background processes, no popups. A tiny DLL injected into `explorer.exe` listens for the hotkey, identifies the app under your cursor, and kills it. The launcher exits immediately — nothing stays running except a lightweight hook inside a process already in memory.
@@ -59,8 +59,8 @@ Auto-elevates via UAC. Copies files to `%LOCALAPPDATA%\EndTask10\`, registers au
 
 | Mode | How |
 |------|-----|
-| **Hover** 🖱️ | Mouse over any taskbar icon, press **Ctrl+Shift+End** |
-| **Right-click** 🖱️ | Right-click a taskbar app, press **Ctrl+Shift+End** within 8s |
+| **Hover** 🖱️ | Mouse over any taskbar icon, press **Ctrl+Shift+E** |
+| **Right-click** 🖱️ | Right-click a taskbar app, press **Ctrl+Shift+E** within 8s |
 
 Press **Esc** to cancel a pending target.
 
