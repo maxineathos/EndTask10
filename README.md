@@ -35,7 +35,7 @@ No tray icons, no overlays, no popups, no background processes.
 
 > **Antivirus note:** EndTask10 injects a DLL into `explorer.exe` using `CreateRemoteThread` — a technique also used by malware, so antivirus engines may flag it as a **false positive**. This is normal. Add an exception for `%LOCALAPPDATA%\EndTask10\` or the extracted folder if needed.
 >
-> **Note on auto-restart:** Some apps (e.g. Steam) have built-in watchdog mechanisms that restart them no matter how you kill them. This is a limitation of the app itself, not the tool. There is no workaround — close these apps through their own interface.
+> **Note on auto-restart:** Some apps (e.g. Steam) have built-in watchdog mechanisms that restart them no matter how you kill them. Even so, the tool is still useful as an **anti-crash** solution: if an app freezes and you can't close it normally, right-click its taskbar icon and press **Ctrl+Shift+E** to terminate it and get unstuck — even if it restarts, at least the frozen state is gone.
 
 ### 1. Download
 
