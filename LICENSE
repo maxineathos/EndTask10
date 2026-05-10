@@ -4,14 +4,21 @@ Copyright (c) 2026 Maxine Athos
 The official distribution channel for this software is the GitHub repository:
     https://github.com/maxineathos/EndTask10
 
-You may fork this repository and submit pull requests via GitHub.
-This does not grant you any right to distribute the software,
-modified or unmodified, through any other channel.
+You may fork this repository to modify the software for personal use
+or to contribute improvements via pull requests. Contributors who
+submit pull requests that are merged become recognized contributors
+to the project.
 
-Redistribution of this software, in whole or in part, through any
-channel other than the official repository is strictly prohibited.
-This includes but is not limited to: re-uploading to other websites,
-hosting on package managers, or bundling in other distributions.
+Any modification deemed relevant should be submitted as a pull request
+to the official repository so it can be reviewed and potentially merged
+into the next official release. Hosting modified versions in separate
+repositories or distribution channels is not permitted.
+
+Redistribution of this software, in whole or in part, modified or
+unmodified, through any channel other than the official repository
+is strictly prohibited. This includes but is not limited to:
+re-uploading to other websites, hosting on package managers, forking
+into separate published projects, or bundling in other distributions.
 
 You may use, modify, and compile this software for personal,
 educational, and hobby use only.
