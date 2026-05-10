@@ -33,6 +33,8 @@ No tray icons, no overlays, no popups, no background processes.
 
 ## Quick install
 
+> **Antivirus note:** EndTask10 injects a DLL into `explorer.exe` using `CreateRemoteThread` — a technique also used by malware, so antivirus engines may flag it as a **false positive**. This is normal. Add an exception for `%LOCALAPPDATA%\EndTask10\` or the extracted folder if needed.
+
 ### 1. Download
 
 Get the latest build from [Releases](https://github.com/maxineathos/EndTask10/releases).
