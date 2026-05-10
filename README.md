@@ -1,22 +1,28 @@
-# EndTask10 💥
-
 <p align="center">
-  <img src="endtask10_logo.png" alt="EndTask10 Logo" width="400"/>
+  <img src="https://i.imgur.com/fnhroTI.png" alt="EndTask10 Logo" width="100%"/>
 </p>
 
-> Kill taskbar apps instantly with **Ctrl+Shift+E** ⌨️ — just hover over the icon or right-click — no tray icon, no UI.
+<p align="center">
+  <i>Instantly end frozen apps. Just hover and press <b>CTRL + SHIFT + END</b></i>
+</p>
 
-[![License: Custom](https://img.shields.io/badge/License-Custom%20(Non--Commercial)-orange.svg)](LICENSE)
-![Platform](https://img.shields.io/badge/Platform-Windows%2010%20|%2011%20x64-blue)
-![Language](https://img.shields.io/badge/Language-C%2B%2B17-purple)
+<p align="center">
+  <a href="https://github.com/maxineathos/EndTask10/releases"><img src="https://img.shields.io/github/v/release/maxineathos/EndTask10?color=2ea043&label=Download&logo=github" alt="Download"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Custom%20(Non--Commercial)-orange.svg" alt="License"/></a>
+  <img src="https://img.shields.io/badge/Platform-Windows%2010%20|%2011%20x64-blue" alt="Platform"/>
+  <img src="https://img.shields.io/badge/Language-C%2B%2B17-purple" alt="Language"/>
+  <img src="https://img.shields.io/github/downloads/maxineathos/EndTask10/total?color=2ea043&label=Downloads" alt="Downloads"/>
+</p>
 
 ---
 
-## What is this? 🪟
+## The problem 🪟
 
-Windows 11 ships an **"End Task"** option in the taskbar right-click menu that forcefully terminates a hung application. Windows 10 doesn't have it.
+Windows 11 has a built-in **"End Task"** option in the taskbar right-click menu that forcefully kills hung applications. Windows 10 doesn't have this feature — and even on Windows 11, it requires two clicks and digging through a menu. When an app freezes, every second counts.
 
-**EndTask10** brings the same functionality to Windows 10 (and works as an alternative keyboard shortcut on Windows 11 too). **Just hover** 🖱️ your mouse over any running app on the taskbar (or its thumbnail preview) and press **Ctrl+Shift+E** — the app is killed instantly. No right-click needed.
+**EndTask10** solves this by bringing the same capability to Windows 10 (and a faster keyboard shortcut to Windows 11). Just hover 🖱️ your mouse over any running app on the taskbar — or its thumbnail preview — and press **Ctrl+Shift+E** ⌨️. The app is terminated instantly. No right-click needed, no menus, no waiting.
+
+Inspired by the Windows 11 "End Task" feature, built because Windows 10 deserves it too.
 
 ## How it works
 
