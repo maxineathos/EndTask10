@@ -31,7 +31,7 @@ EndTask10 makes it a **single keystroke**: hover your mouse over any taskbar ico
 
 <p align="center">
   <a href="https://github.com/user-attachments/assets/0f614778-676c-4ed6-80d5-fdd3fc3f9d50">
-    <img src="https://i.imgur.com/fnhroTI.png" alt="EndTask10 Demo" width="100%"/>
+    <img src="https://i.imgur.com/OPtQIIt.gif" alt="EndTask10 Demo" width="100%"/>
   </a>
   <br/>
   <i>Click to watch the demo — Hover + Ctrl+Shift+End = done. No menus, no clicking, no waiting.</i>
