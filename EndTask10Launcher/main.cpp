@@ -98,6 +98,39 @@ int wmain(int argc, wchar_t* argv[])
 
     wprintf(L"EndTask10 - Injector\n\n");
 
+    // Try to stop services that auto-restart killed apps (only works if elevated)
+    BOOL isElevated = FALSE;
+    HANDLE hToken = nullptr;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
+        TOKEN_ELEVATION te = {};
+        DWORD sz = 0;
+        if (GetTokenInformation(hToken, TokenElevation, &te, sizeof(te), &sz))
+            isElevated = te.TokenIsElevated;
+        CloseHandle(hToken);
+    }
+    if (isElevated) {
+        wprintf(L"Running elevated — stopping restart services...\n");
+        const wchar_t* services[] = {
+            L"Steam Client Service",
+            L"Steam Client Service64",
+            L"Epic Online Services",
+            L"EpicGamesLauncher",
+        };
+        for (int i = 0; i < _countof(services); i++) {
+            SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
+            if (scm) {
+                SC_HANDLE svc = OpenServiceW(scm, services[i], SERVICE_STOP | SERVICE_QUERY_STATUS);
+                if (svc) {
+                    SERVICE_STATUS ss;
+                    if (ControlService(svc, SERVICE_CONTROL_STOP, &ss))
+                        wprintf(L"  Stopped: %s\n", services[i]);
+                    CloseServiceHandle(svc);
+                }
+                CloseServiceHandle(scm);
+            }
+        }
+    }
+
     DWORD pid = FindExplorerPID();
     if (!pid) { wprintf(L"explorer.exe not found\n"); return 1; }
     wprintf(L"explorer.exe PID: %lu\n", pid);

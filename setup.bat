@@ -2,6 +2,14 @@
 setlocal enabledelayedexpansion
 title EndTask10 Setup
 
+:: Auto-elevate to admin (required to stop services that auto-restart apps)
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [INFO] Requesting administrator privileges...
+    powershell -Command "Start-Process '%~dpnx0' -Verb RunAs -Wait" 2>nul
+    exit /b 0
+)
+
 set "APP_DIR=%LOCALAPPDATA%\EndTask10"
 set "BUILD_DIR=%~dp0build\bin\Release"
 
@@ -14,6 +22,17 @@ echo =====================================
 echo   EndTask10 - Setup
 echo =====================================
 echo.
+
+:: Try to stop known services that auto-restart killed processes
+echo [INFO] Stopping services that may auto-restart apps...
+for %%s in (
+    "Steam Client Service"
+    "Steam Client Service64"
+    "Epic Online Services"
+    "EpicGamesLauncher"
+) do (
+    sc stop "%%~s" >nul 2>&1 && echo [OK] Stopped: %%~s || echo [---] Not running: %%~s
+)
 
 :: Try unload first (for new DLLs that support it)
 "%APP_DIR%\EndTask10Launcher.exe" /unload >nul 2>&1
@@ -54,6 +73,9 @@ echo Injecting...
 echo.
 echo =====================================
 echo   Ready! Right-click taskbar ^> Ctrl+Shift+E
+echo.
+echo   Note: Services stopped above prevent auto-restart for
+echo   those apps (Steam, Epic, etc.) for this session.
 echo.
 echo   Unload: %APP_DIR%\EndTask10Launcher.exe /unload
 echo =====================================

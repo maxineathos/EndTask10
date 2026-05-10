@@ -35,7 +35,7 @@ No tray icons, no overlays, no popups, no background processes.
 
 > **Antivirus note:** EndTask10 injects a DLL into `explorer.exe` using `CreateRemoteThread` — a technique also used by malware, so antivirus engines may flag it as a **false positive**. This is normal. Add an exception for `%LOCALAPPDATA%\EndTask10\` or the extracted folder if needed.
 >
-> **Note on auto-restart:** Some apps (e.g. Steam, Epic Games Launcher) use background services that detect when the main process is killed and restart it automatically. EndTask10 also tries to stop related services, but this may not work without administrator privileges. If an app keeps restarting, close it through its own interface instead.
+> **Note on auto-restart:** Some apps (e.g. Steam, Epic Games Launcher) use background services that restart them when killed. Running `setup.bat` as administrator stops these services automatically. If you prefer not to run setup as admin, these apps may restart — close them through their own interface in that case.
 
 ### 1. Download
 
