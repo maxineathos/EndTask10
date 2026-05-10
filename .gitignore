@@ -1,0 +1,34 @@
+# Build outputs
+build/
+cmake-build-*/
+out/
+
+# Visual Studio
+.vs/
+*.sln
+*.suo
+*.user
+*.userosscache
+*.VC.db
+*.VC.VC.opendb
+*.vcxproj.user
+
+# Windows explorer thumbs
+Thumbs.db
+
+# Compiled binaries
+*.exe
+*.dll
+*.pdb
+*.lib
+*.exp
+*.obj
+*.ilk
+*.log
+
+# IDE files
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
